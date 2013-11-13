@@ -23,43 +23,43 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
  * OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-/* 
- *	Coordinated motion (line drawing) is performed using a classic 
- *	Bresenham DDA as per reprap and grbl. A number of additional steps 
+/*
+ *	Coordinated motion (line drawing) is performed using a classic
+ *	Bresenham DDA as per reprap and grbl. A number of additional steps
  *	are taken to optimize interpolation and pulse train accuracy.
  *
- *	- The DDA accepts and processes fractional motor steps. Steps are 
+ *	- The DDA accepts and processes fractional motor steps. Steps are
  *	  passed to the move queue as floats, and do not need to be integer
- *	  values. The DDA implements fractional steps and interpolation by 
- *	  extending the counter range downward using the DDA_SUBSTEPS setting. 
+ *	  values. The DDA implements fractional steps and interpolation by
+ *	  extending the counter range downward using the DDA_SUBSTEPS setting.
  *
  *	- The DDA is not used as a 'ramp' for acceleration management. Accel
- *	  is computed as 3rd order (controlled jerk) equations that generate 
+ *	  is computed as 3rd order (controlled jerk) equations that generate
  *	  accel/decel segments to the DDA in much the same way arc drawing
  *	  is approximated. The DDA runs at a constant rate for each segment,
  *	  up to a maximum of 50 Khz step rate.
  *
- *	- The DDA rate for a segment is set to an integer multiple of the 
- *	  step freqency of the fastest motor (major axis). This amount of 
+ *	- The DDA rate for a segment is set to an integer multiple of the
+ *	  step freqency of the fastest motor (major axis). This amount of
  *	  overclocking is controlled by the DDA_OVERCLOCK value, typically 16x.
- *	  A minimum DDA rate is enforced that prevents overflowing the 16 bit 
- *	  DDA timer PERIOD value. The DDA timer always runs at 32 Mhz: the 
- *	  prescaler is not used. Various methods are used to keep the numbers 
+ *	  A minimum DDA rate is enforced that prevents overflowing the 16 bit
+ *	  DDA timer PERIOD value. The DDA timer always runs at 32 Mhz: the
+ *	  prescaler is not used. Various methods are used to keep the numbers
  *	  in range for long lines. See _st_set_f_dda() for details.
  *
  *	- Pulse phasing is preserved between segments if possible. This makes
- *	  for smoother motion, particularly at very low speeds and short 
- *	  segment lengths (avoids pulse jitter). Phase continuity is achieved 
- *	  by simply not resetting the DDA counters across segments. In some 
- *	  cases the differences between timer values across segments are too 
- *	  large for this to work, and you risk motor stalls due to pulse 
- *	  starvation. These cases are detected and the counters are reset 
+ *	  for smoother motion, particularly at very low speeds and short
+ *	  segment lengths (avoids pulse jitter). Phase continuity is achieved
+ *	  by simply not resetting the DDA counters across segments. In some
+ *	  cases the differences between timer values across segments are too
+ *	  large for this to work, and you risk motor stalls due to pulse
+ *	  starvation. These cases are detected and the counters are reset
  *	  to prevent stalling.
  *
- *  - Pulse phasing is also helped by minimizing the time spent loading 
- *	  the next move segment. To this end as much as possible about that 
- *	  move is pre-computed during move execution. Also, all moves are 
- *	  loaded from the interrupt level, avoiding the need for mutual 
+ *  - Pulse phasing is also helped by minimizing the time spent loading
+ *	  the next move segment. To this end as much as possible about that
+ *	  move is pre-computed during move execution. Also, all moves are
+ *	  loaded from the interrupt level, avoiding the need for mutual
  *	  exclusion locking or volatiles (which slow things down).
  */
 
@@ -112,42 +112,45 @@ void st_dump_stepper_state(void);
 #define DDA_SUBSTEPS 100000		// 100,000 accumulates substeps to 6 decimal places
 
 /* DDA overclocking
- * 	Overclocking multiplies the step rate of the fastest axis (major axis) 
- *	by an integer value up to the DDA_OVERCLOCK value. This makes the 
+ * 	Overclocking multiplies the step rate of the fastest axis (major axis)
+ *	by an integer value up to the DDA_OVERCLOCK value. This makes the
  *	interpolation of the non-major axes more accurate than simply setting
- *	the DDA to the speed of the major axis; and allows the DDA to run at 
+ *	the DDA to the speed of the major axis; and allows the DDA to run at
  *	less than the max frequency when possible.
  *
  *	Set to 0 to disable.
  *
  *	NOTE: TinyG doesn't use tunable overclocking any more. It just overclocks
  *	at the fastest sustainable step rate which is about 50 Khz for the xmega.
- *	This minimizes the aliasing on minor axes at minimal impact to the major 
+ *	This minimizes the aliasing on minor axes at minimal impact to the major
  *	axis. The DDA overclock setting and associated code are left in for historical
  *	purposes and in case we ever want to go back to pure overclocking.
  *
  *	Setting this value to 0 has the effect of telling the optimizer to take out
- *	entire code regions that are not called if this value is zero. So they are 
+ *	entire code regions that are not called if this value is zero. So they are
  *	left in for historical purposes and not commented out. These regions are noted.
  */
 //#define DDA_OVERCLOCK 16		// doesn't have to be a binary multiple
 #define DDA_OVERCLOCK 0			// Permanently disabled. See above NOTE
 
 /* Accumulator resets
- * 	You want to reset the DDA accumulators if the new ticks value is way less 
+ * 	You want to reset the DDA accumulators if the new ticks value is way less
  *	than previous value, but otherwise you should leave the accumulators alone.
- *	Preserving the accumulator value from the previous segment aligns pulse 
- *	phasing between segments. However, if the new accumulator is going to be 
+ *	Preserving the accumulator value from the previous segment aligns pulse
+ *	phasing between segments. However, if the new accumulator is going to be
  *	much less than the old one you must reset it or risk motor stalls.
  */
 #define ACCUMULATOR_RESET_FACTOR 2	// amount counter range can safely change
 
 /* DDA minimum operating frequency
- *	This is the minumum value the DDA time can run with a fixed 32 Mhz 
+ *	This is the minumum value the DDA time can run with a fixed 32 Mhz
  *	clock. Anything lower will overflow the 16 bit PERIOD register.
  */
 //#define F_DDA_MIN (float)489	// hz
 #define F_DDA_MIN (float)500	// hz - is 489 Hz with some margin
+
+#define STEP_PULSE_WIDTH_US = 10 // how long a pulse lasts, in microseconds
+#define STEP_PULSE_CYCLES = (uint16_t)((F_CPU / 1000000UL) * STEP_PULSE_WIDTH_US)
 
 /* Timer settings for stepper module. See system.h for timer assignments
  */
@@ -163,16 +166,20 @@ void st_dump_stepper_state(void);
 #define STEP_TIMER_WGMODE	0		// normal mode (count to TOP and rollover)
 
 #define TIMER_DDA_ISR_vect	TCC0_OVF_vect	// must agree with assignment in system.h
-#define TIMER_DWELL_ISR_vect TCD0_OVF_vect	// must agree with assignment in system.h
-#define TIMER_LOAD_ISR_vect	TCE0_OVF_vect	// must agree with assignment in system.h
-#define TIMER_EXEC_ISR_vect	TCF0_OVF_vect	// must agree with assignment in system.h
+#define TIMER_OFF_ISR_vect  TCC1_OVF_vect // must agree with assignment in system.h
+#define TIMER_DWELL_ISR_vect TCD0_OVF_vect  // must agree with assignment in system.h
+#define TIMER_PULSE_ISR_vect TCD0_OVF_vect // must agree with assignment in system.h
+#define TIMER_LOAD_ISR_vect TCE0_OVF_vect // must agree with assignment in system.h
+#define TIMER_EXEC_ISR_vect TCF0_OVF_vect // must agree with assignment in system.h
 
 #define TIMER_OVFINTLVL_HI	3		// timer interrupt level (3=hi)
 #define	TIMER_OVFINTLVL_MED 2;		// timer interrupt level (2=med)
 #define	TIMER_OVFINTLVL_LO  1;		// timer interrupt level (1=lo)
 
 #define TIMER_DDA_INTLVL 	TIMER_OVFINTLVL_HI
+#define TIMER_OFF_INTLVL  TIMER_OVFINTLVL_HI
 #define TIMER_DWELL_INTLVL	TIMER_OVFINTLVL_HI
+#define TIMER_PULSE_INTLVL  TIMER_OVFINTLVL_HI
 #define TIMER_LOAD_INTLVL	TIMER_OVFINTLVL_HI
 #define TIMER_EXEC_INTLVL	TIMER_OVFINTLVL_LO
 

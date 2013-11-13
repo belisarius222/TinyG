@@ -1,5 +1,5 @@
 /*
- * system.h - system hardware device configuration values 
+ * system.h - system hardware device configuration values
  * Part of TinyG project
  *
  * Copyright (c) 2010 - 2012 Alden S. Hart Jr.
@@ -30,7 +30,7 @@
  *	HI	Stepper DDA pulse generation		(set in stepper.h)
  *	HI	Stepper load routine SW interrupt	(set in stepper.h)
  *	HI	Dwell timer counter 				(set in stepper.h)
- *  LO	Segment execution SW interrupt		(set in stepper.h) 
+ *  LO	Segment execution SW interrupt		(set in stepper.h)
  *	MED	GPIO1 switch port					(set in gpio.h)
  *  MED	Serial RX for USB & RS-485			(set in xio_usart.h)
  *  LO	Serial TX for USB & RS-485			(set in xio_usart.h)
@@ -45,7 +45,7 @@ void sys_get_id(char *id);
 
 #define SYS_ID_LEN 12					// length of system ID string from sys_get_id()
 
-/* CPU clock */	
+/* CPU clock */
 
 #undef F_CPU							// set for delays
 #define F_CPU 32000000UL				// should always precede <avr/delay.h>
@@ -95,7 +95,7 @@ void sys_get_id(char *id);
  *	b0	(out) step			(SET is step,  CLR is rest)
  *	b1	(out) direction		(CLR = Clockwise)
  *	b2	(out) motor enable 	(CLR = Enabled)
- *	b3	(out) microstep 0 
+ *	b3	(out) microstep 0
  *	b4	(out) microstep 1
  *	b5	(out) output bit for GPIO port1
  *	b6	(in) min limit switch on GPIO 2 (note: motor controls and GPIO2 port mappings are not the same)
@@ -140,11 +140,13 @@ enum cfgPortBits {			// motor control port bit positions
 
 /* Timer assignments - see specific modules for details) */
 
-#define TIMER_DDA			TCC0		// DDA timer 	(see stepper.h)
+#define TIMER_DDA				TCC0		// DDA timer 	(see stepper.h)
 #define TIMER_DWELL	 		TCD0		// Dwell timer	(see stepper.h)
+#define TIMER_PULSE			TCD0		// Pulse timer, share the dwell timer because they're used separately
 #define TIMER_LOAD			TCE0		// Loader timer	(see stepper.h)
 #define TIMER_EXEC			TCF0		// Exec timer	(see stepper.h)
-#define TIMER_5				TCC1		// unallocated timer
+#define TIMER_5					TCC1		// [formerly] unallocated timer
+#define TIMER_OFF				TCC1		// OFF timer (see stepper.h)
 #define TIMER_PWM1			TCD1		// PWM timer #1 (see pwm.c)
 #define TIMER_PWM2			TCE1		// PWM timer #2	(see pwm.c)
 
@@ -157,9 +159,9 @@ enum cfgPortBits {			// motor control port bit positions
 	The initialization sequence is important. the order is:
 		- sys_init()	binds all ports to the device struct
 		- st_init() 	sets IO directions and sets stepper VPORTS and stepper specific functions
-		- gpio_init()	sets up input and output functions and required interrupts	
+		- gpio_init()	sets up input and output functions and required interrupts
 
-	Care needs to be taken in routines that use ports not to write to bits that are 
+	Care needs to be taken in routines that use ports not to write to bits that are
 	not assigned to the designated function - ur unpredicatable results will occur
 */
 
